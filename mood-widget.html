@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood Tracker Widget</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 15px;
+        }
+
+        .tracker {
+            text-align: center;
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .week {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .day {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .day-label {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .mood-btn {
+            border-radius: 50%;
+            border: 2px dashed;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+            line-height: 1;
+            overflow: hidden;
+        }
+
+        .mood-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .mood-btn.filled {
+            border-style: solid;
+        }
+
+        .mood-btn img {
+            width: 90%;
+            height: 90%;
+            object-fit: contain;
+            background: transparent;
+        }
+
+        /* Mood picker popup */
+        .mood-picker {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            text-align: center;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .mood-picker.show {
+            display: block;
+        }
+
+        .mood-picker-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #37352F;
+        }
+
+        .mood-options {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 320px;
+        }
+
+        .mood-options.custom-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            max-width: 340px;
+        }
+
+        .mood-option {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid #e2e8f0;
+            background: white;
+            cursor: pointer;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .mood-option:hover {
+            border-color: #667eea;
+            transform: scale(1.1);
+        }
+
+        .mood-option img {
+            width: 85%;
+            height: 85%;
+            object-fit: contain;
+            background: transparent;
+        }
+
+        .mood-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 999;
+        }
+
+        .mood-overlay.show {
+            display: block;
+        }
+
+        .clear-btn {
+            margin-top: 15px;
+            padding: 8px 16px;
+            border: none;
+            background: #e2e8f0;
+            color: #718096;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .clear-btn:hover {
+            background: #cbd5e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="tracker" id="tracker">
+        <div class="title" id="title">Weekly Mood</div>
+        <div class="week" id="week"></div>
+    </div>
+
+    <div class="mood-overlay" id="overlay"></div>
+    <div class="mood-picker" id="picker">
+        <div class="mood-picker-title">How are you feeling?</div>
+        <div class="mood-options" id="mood-options"></div>
+        <button class="clear-btn" id="clear-btn">Clear</button>
+    </div>
+
+    <script>
+        // Base URL for custom face images
+        const FACES_BASE_URL = 'https://kdigitalstudio.github.io/notion-mood-tracker/faces/';
+        
+        // Get URL parameters
+        const params = new URLSearchParams(window.location.search);
+        
+        // Parse settings
+        const settings = {
+            title: params.get('title') || 'Weekly Mood',
+            weekStart: params.get('weekStart') || 'sunday',
+            moodStyle: params.get('moodStyle') || 'emoji',
+            showTitle: params.get('showTitle') !== 'false',
+            showDayLabels: params.get('showDayLabels') !== 'false',
+            showBorder: params.get('showBorder') === 'true',
+            compactMode: params.get('compactMode') === 'true',
+            accentColor: params.get('accentColor') || '#f4c3d9',
+            titleColor: params.get('titleColor') || '#37352F',
+            labelColor: params.get('labelColor') || '#718096',
+            bgColor: params.get('bgColor') || '#FFFFFF'
+        };
+
+        // Mood options
+        const emojiMoods = ['😊', '🙂', '😐', '😔', '😢'];
+        
+        // Custom face filenames (1-50)
+        const customFaces = Array.from({length: 50}, (_, i) => `Mood_Faces_${i + 1}.png`);
+        
+        const isCustom = settings.moodStyle === 'custom';
+
+        // Day labels
+        const daysSun = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const daysMon = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const days = settings.weekStart === 'monday' ? daysMon : daysSun;
+
+        // Sizes based on compact mode
+        const fontSize = settings.compactMode ? '20px' : '28px';
+        const cellSize = settings.compactMode ? '36px' : '50px';
+        const gap = settings.compactMode ? '6px' : '10px';
+
+        // Apply styles
+        document.body.style.background = settings.bgColor;
+
+        const tracker = document.getElementById('tracker');
+        if (settings.showBorder) {
+            tracker.style.border = `2px solid ${settings.accentColor}`;
+            tracker.style.borderRadius = '16px';
+            tracker.style.padding = '20px';
+        }
+
+        const title = document.getElementById('title');
+        title.textContent = settings.title;
+        title.style.color = settings.titleColor;
+        title.style.display = settings.showTitle ? 'block' : 'none';
+
+        const week = document.getElementById('week');
+        week.style.gap = gap;
+
+        // Storage key based on settings to make it unique per widget config
+        const storageKey = `mood_${settings.weekStart}_${btoa(settings.title).slice(0, 8)}`;
+
+        // Get the start of the current week
+        function getWeekStart() {
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            const diff = settings.weekStart === 'monday' 
+                ? (dayOfWeek === 0 ? 6 : dayOfWeek - 1)
+                : dayOfWeek;
+            
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - diff);
+            weekStart.setHours(0, 0, 0, 0);
+            return weekStart.getTime();
+        }
+
+        // Load moods from localStorage
+        function loadMoods() {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const data = JSON.parse(stored);
+                const currentWeekStart = getWeekStart();
+                
+                // Check if stored data is from current week
+                if (data.weekStart === currentWeekStart) {
+                    return data.moods;
+                }
+            }
+            // Return empty array for new week
+            return Array(7).fill(null);
+        }
+
+        // Save moods to localStorage
+        function saveMoods(moods) {
+            const data = {
+                weekStart: getWeekStart(),
+                moods: moods
+            };
+            localStorage.setItem(storageKey, JSON.stringify(data));
+        }
+
+        // Current moods array
+        let currentMoods = loadMoods();
+        let selectedDayIndex = null;
+
+        // Get today's day index based on week start
+        function getTodayIndex() {
+            const dayOfWeek = new Date().getDay();
+            if (settings.weekStart === 'monday') {
+                return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            }
+            return dayOfWeek;
+        }
+
+        // Render mood content (emoji or image)
+        function renderMoodContent(mood) {
+            if (!mood) return '';
+            
+            if (isCustom && mood.startsWith('Mood_Faces_')) {
+                return `<img src="${FACES_BASE_URL}${mood}" alt="mood">`;
+            }
+            return mood;
+        }
+
+        // Render the week
+        function renderWeek() {
+            week.innerHTML = '';
+            const todayIndex = getTodayIndex();
+
+            days.forEach((day, index) => {
+                const dayEl = document.createElement('div');
+                dayEl.className = 'day';
+
+                const label = document.createElement('span');
+                label.className = 'day-label';
+                label.textContent = day;
+                label.style.color = settings.labelColor;
+                label.style.display = settings.showDayLabels ? 'block' : 'none';
+
+                const btn = document.createElement('button');
+                btn.className = 'mood-btn' + (currentMoods[index] ? ' filled' : '');
+                btn.style.width = cellSize;
+                btn.style.height = cellSize;
+                btn.style.fontSize = fontSize;
+                btn.style.borderColor = settings.accentColor;
+                btn.style.background = currentMoods[index] ? `${settings.accentColor}33` : 'transparent';
+                btn.innerHTML = renderMoodContent(currentMoods[index]);
+                
+                // Only allow clicking on today or past days
+                if (index <= todayIndex) {
+                    btn.addEventListener('click', () => openPicker(index));
+                    btn.style.cursor = 'pointer';
+                } else {
+                    btn.style.opacity = '0.4';
+                    btn.style.cursor = 'not-allowed';
+                }
+
+                // Highlight today
+                if (index === todayIndex) {
+                    btn.style.boxShadow = `0 0 0 3px ${settings.accentColor}44`;
+                }
+
+                dayEl.appendChild(label);
+                dayEl.appendChild(btn);
+                week.appendChild(dayEl);
+            });
+        }
+
+        // Picker elements
+        const overlay = document.getElementById('overlay');
+        const picker = document.getElementById('picker');
+        const moodOptions = document.getElementById('mood-options');
+        const clearBtn = document.getElementById('clear-btn');
+
+        // Render mood options in picker
+        function renderMoodOptions() {
+            moodOptions.innerHTML = '';
+            
+            if (isCustom) {
+                moodOptions.classList.add('custom-grid');
+                customFaces.forEach((face) => {
+                    const option = document.createElement('button');
+                    option.className = 'mood-option';
+                    option.innerHTML = `<img src="${FACES_BASE_URL}${face}" alt="mood">`;
+                    option.addEventListener('click', () => selectMood(face));
+                    moodOptions.appendChild(option);
+                });
+            } else {
+                moodOptions.classList.remove('custom-grid');
+                emojiMoods.forEach((mood) => {
+                    const option = document.createElement('button');
+                    option.className = 'mood-option';
+                    option.textContent = mood;
+                    option.addEventListener('click', () => selectMood(mood));
+                    moodOptions.appendChild(option);
+                });
+            }
+        }
+
+        // Open picker
+        function openPicker(dayIndex) {
+            selectedDayIndex = dayIndex;
+            overlay.classList.add('show');
+            picker.classList.add('show');
+        }
+
+        // Close picker
+        function closePicker() {
+            overlay.classList.remove('show');
+            picker.classList.remove('show');
+            selectedDayIndex = null;
+        }
+
+        // Select mood
+        function selectMood(mood) {
+            if (selectedDayIndex !== null) {
+                currentMoods[selectedDayIndex] = mood;
+                saveMoods(currentMoods);
+                renderWeek();
+            }
+            closePicker();
+        }
+
+        // Clear mood
+        clearBtn.addEventListener('click', () => {
+            if (selectedDayIndex !== null) {
+                currentMoods[selectedDayIndex] = null;
+                saveMoods(currentMoods);
+                renderWeek();
+            }
+            closePicker();
+        });
+
+        // Close on overlay click
+        overlay.addEventListener('click', closePicker);
+
+        // Style the picker accent color
+        picker.style.borderTop = `4px solid ${settings.accentColor}`;
+
+        // Initial render
+        renderMoodOptions();
+        renderWeek();
+
+        // Check for week reset every minute
+        setInterval(() => {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const data = JSON.parse(stored);
+                if (data.weekStart !== getWeekStart()) {
+                    currentMoods = Array(7).fill(null);
+                    saveMoods(currentMoods);
+                    renderWeek();
+                }
+            }
+        }, 60000);
+    </script>
+</body>
+</html>
